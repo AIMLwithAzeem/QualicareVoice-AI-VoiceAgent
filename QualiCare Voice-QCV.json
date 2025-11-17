@@ -1,0 +1,692 @@
+{
+  "name": "QualiCare Voice-QCV",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "b26e77e8-9669-49ad-a72f-e586ca9015c5",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -464,
+        0
+      ],
+      "id": "77ffe631-4348-4e7f-817d-b99135df62bd",
+      "name": "Vapi Call Trigger",
+      "webhookId": "b26e77e8-9669-49ad-a72f-e586ca9015c5"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1dAgqUu39jrxm8Asq5EOAe9uY4lSCLUG5ERz3TBKMYqQ",
+          "mode": "list",
+          "cachedResultName": "QCV - Intake Master Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1dAgqUu39jrxm8Asq5EOAe9uY4lSCLUG5ERz3TBKMYqQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Accepted Insurance List",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1dAgqUu39jrxm8Asq5EOAe9uY4lSCLUG5ERz3TBKMYqQ/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -240,
+        0
+      ],
+      "id": "304f0b7a-b175-47cf-abfc-1989cae2ed4a",
+      "name": "Get Accepted Insurance List",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "FsvUTk0uoSo1NbFK",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Node 4: Check if user-given insurance is accepted (Normalized)\n */\n\n// --- GET DATA ---\n\nconst args = $('Vapi Call Trigger').first().json.body.message.toolCalls[0].function.arguments;\n\nconst patientInsuranceSpoken = args.insurance_spoken || '';\n\n// Get sheet rows\nlet acceptedSheetItems = $('Get Accepted Insurance List').all().map(r => r.json);\n\n// --- NORMALIZATION FUNCTION ---\nfunction normalize(str) {\n  return str\n    .trim()                  // remove leading/trailing spaces\n    .toLowerCase()           // lowercase\n    .replace(/\\s+/g, '');   // remove all internal spaces for forgiving match\n}\n\nconst normalizedPatient = normalize(patientInsuranceSpoken);\n\nlet isHotLead = false;\nlet matchedStatus = 'not found';\n\n// --- LOOP SHEET ---\nfor (const item of acceptedSheetItems) {\n  const sheetInsurance = item['Insurance Name'] || '';\n  const sheetStatus = item['Status'] || '';\n  \n  const normalizedSheet = normalize(sheetInsurance);\n\n  // Check for match\n  if (normalizedPatient === normalizedSheet && sheetStatus.toLowerCase() === 'accepted') {\n    isHotLead = true;\n    matchedStatus = sheetStatus;\n    break;\n  }\n}\n\n// --- OUTPUT ---\nconst output = {\n  patient_name: args.patient_name || 'N/A',\n  patient_phone: args.patient_phone || 'N/A',\n  service_type: args.service_type || 'N/A',\n  insurance_spoken: args.insurance_spoken || 'N/A',\n  matched_status: matchedStatus,\n  is_hot_lead: isHotLead\n};\n\nreturn [{ json: output }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        0
+      ],
+      "id": "81776cf0-1f2b-46f1-ba1b-817e302d1bd9",
+      "name": "Qualification Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9866bb3a-0e3a-463f-9f66-363b397d69cc",
+              "leftValue": "={{ $json.is_hot_lead }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        192,
+        0
+      ],
+      "id": "fd74a558-f701-44f6-a6c3-df2ec72eee67",
+      "name": "Route Hot/Cold Lead"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "caf51f731470916706929c67813da89b874c8770a33566756d3a47ae7c3386d5@group.calendar.google.com",
+          "mode": "list",
+          "cachedResultName": "QualiCare Voice Bookings"
+        },
+        "start": "={{ $json.start.dateTime }}",
+        "end": "={{ $json.end.dateTime }}",
+        "additionalFields": {
+          "summary": "={{ $('Route Hot/Cold Lead').item.json.patient_name }}--{{ $('Route Hot/Cold Lead').item.json.service_type }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        736,
+        -336
+      ],
+      "id": "7574794c-546a-4a90-9ba7-bb3cea729906",
+      "name": "Create Appointment",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "BWEQqphTyz6Y7xOJ",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "from": "+12175133475",
+        "to": "=+92{{ $('Qualification Check').first().json.patient_phone.replace(/[^0-9]/g, \"\") }}",
+        "message": "=Hi {{ $('Qualification Check').first().json.patient_name }},\n\nYour appointment for {{ $('Qualification Check').first().json.service_type }} \nis confirmed on {{ new Date($('Create Appointment').first().json.start.dateTime).toLocaleString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) }}.  \n\nWe look forward to seeing you at QualiCare Voice!\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        912,
+        -336
+      ],
+      "id": "ab13c8fe-6b12-4a4a-91f5-e15469c2a74a",
+      "name": "Twilio",
+      "credentials": {
+        "twilioApi": {
+          "id": "dRZgSo6HVrHaP6wq",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1344,
+        -336
+      ],
+      "id": "8ce3688f-956a-4440-849a-c4ce09a3dfeb",
+      "name": "Vapi Respond Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1184,
+        16
+      ],
+      "id": "2dd282d9-b437-449b-93ab-9343ba2349a9",
+      "name": "Vapi Respond Failure",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1dAgqUu39jrxm8Asq5EOAe9uY4lSCLUG5ERz3TBKMYqQ",
+          "mode": "list",
+          "cachedResultName": "QCV - Intake Master Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1dAgqUu39jrxm8Asq5EOAe9uY4lSCLUG5ERz3TBKMYqQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 861166678,
+          "mode": "list",
+          "cachedResultName": "Lead Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1dAgqUu39jrxm8Asq5EOAe9uY4lSCLUG5ERz3TBKMYqQ/edit#gid=861166678"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Patient Name": "={{ $('Route Hot/Cold Lead').item.json.patient_name }}",
+            "Phone Number": "={{ $('Route Hot/Cold Lead').item.json.patient_phone }}",
+            "Service Type": "={{ $('Route Hot/Cold Lead').item.json.service_type }}",
+            "Insurance Spoken": "={{ $('Route Hot/Cold Lead').item.json.insurance_spoken }}",
+            "Calendar Event ID": "={{ $if($(\"Create Appointment\").isExecuted, $('Create Appointment').item.json.id, \"N/A\") }}\n",
+            "Appointment Time": "={{ $if($(\"Create Appointment\").isExecuted, $('Create Appointment').item.json.start.dateTime, \"N/A\") }}",
+            "Timestamp": "={{ new Date().toLocaleString() }}",
+            "Final Status": "={{ $('Qualification Check').item.json.is_hot_lead ? 'BOOKED' : 'UNQUALIFIED' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Patient Name",
+              "displayName": "Patient Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Service Type",
+              "displayName": "Service Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Insurance Spoken",
+              "displayName": "Insurance Spoken",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Final Status",
+              "displayName": "Final Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Calendar Event ID",
+              "displayName": "Calendar Event ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Appointment Time",
+              "displayName": "Appointment Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1632,
+        16
+      ],
+      "id": "300e55b8-50d1-4c90-b20d-3a651e244f47",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "FsvUTk0uoSo1NbFK",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/calendar/v3/calendars/caf51f731470916706929c67813da89b874c8770a33566756d3a47ae7c3386d5@group.calendar.google.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "timeMin",
+              "value": "={{ $today.plus({ days: 1 }).startOf('day').toISO() }}"
+            },
+            {
+              "name": "timeMax",
+              "value": "={{ $today.plus({ days: 8 }).endOf('day').toISO() }}"
+            },
+            {
+              "name": "singleEvents",
+              "value": "true"
+            },
+            {
+              "name": "orderBy",
+              "value": "startTime"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        384,
+        -336
+      ],
+      "id": "6f8bd199-9d5a-4920-9c3a-da933e21ffea",
+      "name": "Get Busy slot",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "BWEQqphTyz6Y7xOJ",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: items[0].json.items = array of existing calendar events\nconst events = items[0].json.items;\n\n// Clinic hours and config\nconst WORK_START_HOUR = 9;\nconst WORK_END_HOUR = 17;\nconst SLOT_DURATION_MINUTES = 60;\nconst TIMEZONE_OFFSET = '+05:00'; // Pakistan Standard Time (no DST)\n\n// Utility: format date to ISO string with +05:00 instead of Z\nfunction toLocalISOString(date) {\n  const pad = (n) => String(n).padStart(2, '0');\n  return (\n    date.getFullYear() + '-' +\n    pad(date.getMonth() + 1) + '-' +\n    pad(date.getDate()) + 'T' +\n    pad(date.getHours()) + ':' +\n    pad(date.getMinutes()) + ':' +\n    pad(date.getSeconds()) + TIMEZONE_OFFSET\n  );\n}\n\n// Find next available slot\nfunction getNextAvailableSlot(events) {\n  let day = new Date();\n  day.setHours(0, 0, 0, 0);\n  day.setDate(day.getDate() + 1); // start from tomorrow\n\n  while (true) {\n    const weekday = day.getDay(); // 0=Sun,6=Sat\n    if (weekday !== 0 && weekday !== 6) { // skip weekends\n      for (let hour = WORK_START_HOUR; hour < WORK_END_HOUR; hour++) {\n        const slotStart = new Date(day);\n        slotStart.setHours(hour, 0, 0, 0);\n        const slotEnd = new Date(slotStart);\n        slotEnd.setMinutes(slotEnd.getMinutes() + SLOT_DURATION_MINUTES);\n\n        const conflict = events.some(ev => {\n          const evStart = new Date(ev.start.dateTime || ev.start.date);\n          const evEnd = new Date(ev.end.dateTime || ev.end.date);\n          return slotStart < evEnd && slotEnd > evStart;\n        });\n\n        if (!conflict) {\n          return {\n            summary: \"Appointment with John Davis\",\n            description: \"Booked via Voice Automation\",\n            start: {\n              dateTime: toLocalISOString(slotStart),\n              timeZone: \"Asia/Karachi\",\n            },\n            end: {\n              dateTime: toLocalISOString(slotEnd),\n              timeZone: \"Asia/Karachi\",\n            },\n          };\n        }\n      }\n    }\n    day.setDate(day.getDate() + 1);\n  }\n}\n\nreturn [{ json: getNextAvailableSlot(events) }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        -336
+      ],
+      "id": "5a3a4316-210b-4b94-a83f-cd6242916ba1",
+      "name": "Next Free Slot"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Constructs the explicit JSON structure required by Vapi for responding \n * to a 'tool_call' message and converts it into a binary buffer \n * required by the Webhook Response Node.\n */\n\nconst failureMessage = \"I apologize, but we were unable to confirm coverage for that insurance. A representative will contact you shortly to clarify your options and schedule your appointment manually.\";\n\ntry {\n    // 1. Get the Vapi Trigger data (assuming node name is 'Vapi Call Trigger')\n    const vapiTrigger = $('Vapi Call Trigger').first().json.body.message;\n    const toolCallId = vapiTrigger.toolCalls?.[0]?.id;\n\n    if (!toolCallId) {\n        // Return an error structure if the crucial ID is not found\n        return [{ json: { error: \"Missing Tool Call ID\" } }];\n    }\n\n    // 2. Construct the required Vapi nested JSON object\n    const vapiResponse = {\n        \"results\": [\n            {\n                \"toolCallId\": toolCallId,\n                \"result\": failureMessage\n            }\n        ]\n    };\n    \n    // 3. Convert the JSON object into a raw JSON string\n    const rawJsonString = JSON.stringify(vapiResponse);\n    \n    // 4. CRITICAL: Use the N8N utility to explicitly create the file buffer.\n    // This tells the next node, \"I am not just JSON, I am a Buffer for the 'data' field.\"\n    const bufferData = Buffer.from(rawJsonString, 'utf8');\n\n    // 5. Return the result in the format the Webhook Response Node expects for binary data\n    return [{\n        // This is the JSON data field, but the output property will be the binary data\n        json: {\n            // Keep the JSON structure for debugging internal view\n            vapi_response_json: vapiResponse,\n        },\n        // IMPORTANT: The key MUST match the input field name in the Webhook Response\n        // Since your field name is 'data', the binary property must be 'data'.\n        binary: {\n            data: {\n                data: bufferData.toString('base64'),\n                mimeType: 'application/json',\n                fileExtension: 'json',\n            }\n        }\n    }];\n\n} catch (e) {\n    console.error(\"Critical error during Vapi response construction:\", e);\n    return [{ json: { error: \"Construction Failed\" } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        16
+      ],
+      "id": "7fbcb5f6-8c70-41cd-a870-ed0db69ee8c8",
+      "name": "Build Vapi Tool Result"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Constructs the explicit JSON structure required by Vapi for responding \n * to a 'tool_call' message on the success path.\n * * This code retrieves the mandatory toolCallId, wraps the success message \n * in the 'results' structure, and converts it into a binary buffer \n * required by the Webhook Response Node (Binary file mode).\n */\n\nconst successMessage = \"Great news, your insurance has been verified! I have successfully booked your cleaning appointment. A confirmation text message with all the details will be sent to your phone number, shortly.\";\n\ntry {\n    // 1. Get the Vapi Trigger data (assuming node name is 'Vapi Call Trigger')\n    const vapiTrigger = $('Vapi Call Trigger').first().json.body.message;\n    const toolCallId = vapiTrigger.toolCalls?.[0]?.id;\n\n    if (!toolCallId) {\n        console.error(\"Vapi toolCallId is missing. Cannot respond correctly.\");\n        return [{ json: { error: \"Missing Tool Call ID\" } }];\n    }\n\n    // 2. Construct the required Vapi nested JSON object\n    const vapiResponse = {\n        \"results\": [\n            {\n                \"toolCallId\": toolCallId,\n                \"result\": successMessage // The success message is the result\n            }\n        ]\n    };\n    \n    // 3. Convert the JSON object into a raw JSON string\n    const rawJsonString = JSON.stringify(vapiResponse);\n    \n    // 4. CRITICAL: Convert the string into the binary buffer format N8N expects.\n    const bufferData = Buffer.from(rawJsonString, 'utf8');\n\n    // 5. Return the result in the binary format\n    return [{\n        json: {\n            vapi_response_json: vapiResponse,\n        },\n        // IMPORTANT: We use the unique key 'vapi_result_file' for the binary data\n        binary: {\n            vapi_result_file: {\n                data: bufferData.toString('base64'),\n                mimeType: 'application/json',\n                fileExtension: 'json',\n            }\n        }\n    }];\n\n} catch (e) {\n    console.error(\"Critical error during Vapi response construction:\", e);\n    return [{ json: { error: \"Construction Failed\" } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -336
+      ],
+      "id": "42d9b959-c8e6-4347-b12f-9c0ff999ba97",
+      "name": "Build Vapi Tool Result (Success)"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Looks at the 'Final Status' from the log sheet output to determine \n * the appropriate email recipient (Clinic Assistant vs. Human Caller)\n * and prepares the final notification payload.\n */\n\ntry {\n    // CRITICAL: Access the exact field names from your log sheet output\n    const item = $input.item.json;\n    const finalStatus = item[\"Final Status\"] || 'UNQUALIFIED'; // Default to unqualified if status is missing\n    const patientName = item[\"Patient Name\"] || \"Unknown Patient\";\n    const service = item[\"Service Type\"] || \"Unknown Service\";\n    \n    // Define emails and message templates\n    let subject;\n    let recipient;\n    let messageBody;\n    \n    // --- Determine Recipient based on Final Status ---\n    if (finalStatus.toUpperCase() === 'BOOKED') {\n        // SUCCESS PATH NOTIFICATION\n        subject = `✅ NEW PATIENT BOOKED: ${patientName} (${service})`;\n        recipient = 'exploreaiauto@gmail.com'; // **<-- UPDATE THIS EMAIL**\n        messageBody = `Patient ${patientName} successfully booked a ${service} appointment.\\n\\nDetails:\\n- Time: ${item[\"Appointment Time\"]}\\n- Insurance: ${item[\"Insurance Spoken\"]}\\n- Phone: ${item[\"Phone Number\"]}`;\n    } else {\n        // FAILURE PATH NOTIFICATION (Unqualified, Failed)\n        subject = `🛑 MANUAL FOLLOW-UP REQUIRED: ${patientName} (Unqualified)`;\n        recipient = 'exploreaiauto@gmail.com'; // **<-- UPDATE THIS EMAIL**\n        messageBody = `Patient ${patientName}'s insurance check failed. A manual call is required to verify details and find a solution.\\n\\nDetails:\\n- Service: ${service}\\n- Insurance Spoken: ${item[\"Insurance Spoken\"]}\\n- Phone: ${item[\"Phone Number\"]}`;\n    }\n\n    // 4. Return the notification payload with the correct recipient and message\n    return [{\n        json: {\n            // These new fields are what the Email Node will read\n            notification_recipient: recipient, \n            notification_subject: subject,\n            notification_body: messageBody\n        }\n    }];\n\n} catch (e) {\n    console.error(\"Error in notification routing:\", e);\n    // Return a failed state item so the downstream Email Node gets an error instead of crashing\n    return [{ json: { error: \"Failed to route notification\", originalData: $input.item.json } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        16
+      ],
+      "id": "b9d2b9e6-e188-4bf7-980c-bae52881f989",
+      "name": "Determine Notification Recipient"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.notification_recipient }}",
+        "subject": "={{ $json.notification_subject }}",
+        "message": "={{ $json.notification_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2096,
+        16
+      ],
+      "id": "4353a00f-2bb8-40af-a764-e0e9672482a8",
+      "name": "Send a message",
+      "webhookId": "67f8bc1c-e494-4402-8399-a2ae15eb4704",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "raliBUPqQsRGv2yB",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Lead Qualifier \n**These nodes check the user insurance provider to match against accepted insuranceto qualify them for a Hot lead",
+        "height": 256,
+        "width": 480,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -80,
+        -112
+      ],
+      "typeVersion": 1,
+      "id": "1f645885-6531-44ed-b75c-c602e5b12dac",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Unqualified Lead \n**Sends back a polite message to Vapi and inform user that our human agent will callback shortly to discuss and find a possible solution.",
+        "height": 208,
+        "width": 1024,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        512,
+        -64
+      ],
+      "typeVersion": 1,
+      "id": "fddd05f9-e0de-44fe-bbc4-a9200567b822",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "##                 Qualified Lead \n**This path used to find next free slot in next day and book an appointment for the user,send confirmation SMS to the user,and reply back to Vapi to inform user about successfull appointment booking.",
+        "height": 272,
+        "width": 1280,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        304,
+        -448
+      ],
+      "typeVersion": 1,
+      "id": "d1b2dce0-536f-4cc2-8ded-8b775ee61848",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Call Logger/Alert Generator \n**These nodes logged every call in the sheet with Booked/Unqualified status and alert the staff about booked appointment and in case of unqualified lead, send an Alert to human Agent to immediately callback to user to discuss and settle their issue to convert cold lead in to potential client",
+        "height": 304,
+        "width": 784,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1600,
+        -128
+      ],
+      "typeVersion": 1,
+      "id": "cf3baf58-61df-4800-b0a6-1c1f716dbc1b",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Vapi Call Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Accepted Insurance List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Accepted Insurance List": {
+      "main": [
+        [
+          {
+            "node": "Qualification Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualification Check": {
+      "main": [
+        [
+          {
+            "node": "Route Hot/Cold Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Hot/Cold Lead": {
+      "main": [
+        [
+          {
+            "node": "Get Busy slot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Vapi Tool Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Appointment": {
+      "main": [
+        [
+          {
+            "node": "Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio": {
+      "main": [
+        [
+          {
+            "node": "Build Vapi Tool Result (Success)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vapi Respond Failure": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vapi Respond Success": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Busy slot": {
+      "main": [
+        [
+          {
+            "node": "Next Free Slot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next Free Slot": {
+      "main": [
+        [
+          {
+            "node": "Create Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Vapi Tool Result": {
+      "main": [
+        [
+          {
+            "node": "Vapi Respond Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Vapi Tool Result (Success)": {
+      "main": [
+        [
+          {
+            "node": "Vapi Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Determine Notification Recipient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Notification Recipient": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Karachi",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "e2f26ed2-6224-4f55-9843-d6cb6e4e3660",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "668ef45a57bca43bab6030c2a7c7ce370be266497703c5994106cd0a19e41f50"
+  },
+  "id": "FYkcIhPipNgHu0km",
+  "tags": []
+}
